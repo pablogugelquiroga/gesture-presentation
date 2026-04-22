@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:#111; color:#fff; font-family:system-ui,sans-serif; height:100vh; overflow:hidden; user-select:none; }
+#app { width:100vw; height:100vh; position:relative; cursor:none; }
+
+.slide { display:none; width:80%; max-width:860px; text-align:center; animation:fadeIn 0.4s ease; }
+.slide.active { display:block; }
+@keyframes fadeIn { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
+.slide h1 { font-size:2.8rem; font-weight:600; margin-bottom:1rem; }
+.slide h2 { font-size:2rem; font-weight:500; margin-bottom:1rem; }
+.slide p { font-size:1.1rem; color:#aaa; line-height:1.7; max-width:600px; margin:0 auto 1rem; }
+.slide .accent { color:#7f77dd; }
+.slide ul { list-style:none; text-align:left; max-width:480px; margin:0 auto; }
+.slide ul li { font-size:1rem; padding:0.5rem 0; border-bottom:1px solid #222; color:#ccc; }
+.slide ul li::before { content:"→ "; color:#7f77dd; }
+.slide .icon { font-size:3.5rem; margin-bottom:1rem; }
+
+#stage { width:100%; height:100%; display:flex; align-items:center; justify-content:center; }
+
+#cursor {
+  position:absolute; pointer-events:none; z-index:50;
+  width:28px; height:28px; border-radius:50%;
+  border:2px solid #7f77dd;
+  background:rgba(127,119,221,0.15);
+  transform:translate(-50%,-50%);
+  transition:background 0.1s, transform 0.1s;
+}
+#cursor.curling {
+  background:rgba(127,119,221,0.55);
+  transform:translate(-50%,-50%) scale(0.75);
+}
+#finger-visual {
+  position:absolute; bottom:16px; right:220px;
+  display:flex; flex-direction:column; align-items:center; gap:6px;
+}
+#hand-svg { width:90px; height:110px; }
+
+#controls-hint {
+  position:absolute; top:16px; right:16px;
+  background:rgba(0,0,0,0.6);
+  border:1px solid #2a2a2a;
+  border-radius:10px;
+  padding:10px 14px;
+  font-size:11px;
+  color:#555;
+  line-height:2;
+}
+#controls-hint span { color:#888; }
+
+#debug-panel {
+  position:absolute; top:16px; left:16px;
+  background:rgba(0,0,0,0.6);
+  border:1px solid #2a2a2a;
+  border-radius:10px;
+  padding:10px 14px;
+  font-size:12px; color:#555; line-height:1.9;
+}
+.val { color:#888; font-weight:500; }
+.val.active { color:#7f77dd; }
+
+#toast {
+  position:absolute; bottom:70px; left:50%; transform:translateX(-50%);
+  background:rgba(127,119,221,0.12);
+  border:1px solid rgba(127,119,221,0.35);
+  border-radius:20px; padding:7px 18px;
+  font-size:13px; color:#9f97ef;
+  opacity:0; transition:opacity 0.2s; pointer-events:none; white-space:nowrap;
+}
+#toast.show { opacity:1; }
+
+.progress { position:absolute; bottom:0; left:0; height:3px; background:#7f77dd; transition:width 0.35s ease; }
+.slide-num { position:absolute; bottom:10px; left:50%; transform:translateX(-50%); color:#333; font-size:12px; letter-spacing:0.05em; }
+
+#hold-bar-wrap {
+  position:absolute; bottom:16px; left:50%; transform:translateX(-50%);
+  width:160px; height:6px; background:#222; border-radius:3px; overflow:hidden;
+  opacity:0; transition:opacity 0.2s;
+}
+#hold-bar { height:100%; width:0; background:#7f77dd; border-radius:3px; transition:width 0.05s linear; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="stage">
+    <div class="slide active" data-i="0">
+      <div class="icon">✋</div>
+      <h1>Gesture <span class="accent">Controlled</span></h1>
+      <p>Navigate with your hand and eyes. Move the mouse to aim, hold left-click to curl. Close eyes = both eyes shut.</p>
+    </div>
+    <div class="slide" data-i="1">
+      <h2>How it <span class="accent">works</span></h2>
+      <ul>
+        <li>Move mouse → index finger cursor</li>
+        <li>Hold click (0.4s) → curl → next slide</li>
+        <li>Hold click twice quickly → double curl</li>
+        <li>Press <b>B</b> key → both eyes closed → prev slide</li>
+      </ul>
+    </div>
+    <div class="slide" data-i="2">
+      <div class="icon">🧠</div>
+      <h2>Powered by <span class="accent">MediaPipe</span></h2>
+      <p>21 hand landmarks and 468 face mesh points tracked in real-time at 30fps, all running locally in your browser.</p>
+    </div>
+    <div class="slide" data-i="3">
+      <h2>What's <span class="accent">possible</span></h2>
+      <ul>
+        <li>Hands-free presentations</li>
+        <li>Accessibility interfaces</li>
+        <li>AR / VR interaction design</li>
+        <li>Creative tools and installations</li>
+      </ul>
+    </div>
+    <div class="slide" data-i="4">
+      <div class="icon">🎉</div>
+      <h2>You made it to <span class="accent">the end</span></h2>
+      <p>Hold click to loop back to the start. This is how the real gesture version feels — but with your actual hand.</p>
+    </div>
+  </div>
+
+  <div id="cursor"></div>
+
+  <div id="hold-bar-wrap"><div id="hold-bar"></div></div>
+
+  <div class="progress" id="prog"></div>
+  <div class="slide-num" id="snum">1 / 5</div>
+
+  <div id="debug-panel">
+    <div>finger: <span class="val" id="d-finger">pointing</span></div>
+    <div>eyes: <span class="val" id="d-eyes">open</span></div>
+    <div>gesture: <span class="val" id="d-gesture">–</span></div>
+    <div>slide: <span class="val" id="d-slide">1</span></div>
+  </div>
+
+  <div id="controls-hint">
+    <div><span>mouse move</span> → aim cursor</div>
+    <div><span>hold click</span> → curl finger → next</div>
+    <div><span>B key</span> → blink → prev slide</div>
+  </div>
+
+  <div id="toast"></div>
+</div>
+
+<script>
+const TOTAL = 5;
+let cur = 0;
+let holdTimer = null, holdStart = 0;
+let holdActive = false;
+let barInterval = null;
+let lastCurl = 0, curlCount = 0, curlResetTimer = null;
+let blinkCooldown = false;
+
+const cursorEl = document.getElementById('cursor');
+const toastEl = document.getElementById('toast');
+const holdBarEl = document.getElementById('hold-bar');
+const holdWrapEl = document.getElementById('hold-bar-wrap');
+let toastTimer = null;
+
+function toast(msg) {
+  toastEl.textContent = msg;
+  toastEl.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toastEl.classList.remove('show'), 1100);
+}
+
+function goTo(idx) {
+  idx = ((idx % TOTAL) + TOTAL) % TOTAL;
+  document.querySelector('.slide.active')?.classList.remove('active');
+  document.querySelector(`[data-i="${idx}"]`).classList.add('active');
+  cur = idx;
+  document.getElementById('snum').textContent = `${idx+1} / ${TOTAL}`;
+  document.getElementById('prog').style.width = `${((idx+1)/TOTAL)*100}%`;
+  document.getElementById('d-slide').textContent = idx+1;
+}
+
+function triggerCurl() {
+  const now = Date.now();
+  curlCount++;
+  clearTimeout(curlResetTimer);
+  curlResetTimer = setTimeout(() => {
+    if (curlCount >= 2) {
+      setGesture('double-curl');
+      toast('double curl!');
+    } else {
+      setGesture('curl → next');
+      toast('→ next slide');
+      goTo(cur + 1);
+    }
+    curlCount = 0;
+  }, 380);
+}
+
+function setGesture(g) {
+  const el = document.getElementById('d-gesture');
+  el.textContent = g;
+  el.classList.add('active');
+  setTimeout(() => { el.classList.remove('active'); el.textContent = '–'; }, 700);
+}
+
+document.addEventListener('mousemove', e => {
+  cursorEl.style.left = e.clientX + 'px';
+  cursorEl.style.top = e.clientY + 'px';
+});
+
+document.addEventListener('mousedown', e => {
+  if (e.button !== 0) return;
+  holdActive = true;
+  holdStart = Date.now();
+  holdWrapEl.style.opacity = '1';
+  document.getElementById('d-finger').textContent = 'curling...';
+  document.getElementById('d-finger').classList.add('active');
+  cursorEl.classList.add('curling');
+
+  let prog = 0;
+  barInterval = setInterval(() => {
+    prog = Math.min(100, (Date.now() - holdStart) / 400 * 100);
+    holdBarEl.style.width = prog + '%';
+    if (prog >= 100) {
+      clearInterval(barInterval);
+      holdWrapEl.style.opacity = '0';
+      holdBarEl.style.width = '0';
+      document.getElementById('d-finger').textContent = 'curled';
+      triggerCurl();
+    }
+  }, 30);
+});
+
+document.addEventListener('mouseup', e => {
+  if (!holdActive) return;
+  holdActive = false;
+  clearInterval(barInterval);
+  holdWrapEl.style.opacity = '0';
+  holdBarEl.style.width = '0';
+  cursorEl.classList.remove('curling');
+  document.getElementById('d-finger').textContent = 'pointing';
+  document.getElementById('d-finger').classList.remove('active');
+});
+
+document.addEventListener('keydown', e => {
+  if ((e.key === 'b' || e.key === 'B') && !blinkCooldown) {
+    blinkCooldown = true;
+    document.getElementById('d-eyes').textContent = 'closed';
+    document.getElementById('d-eyes').classList.add('active');
+    setGesture('blink → prev');
+    toast('← prev slide');
+    goTo(cur - 1);
+    setTimeout(() => {
+      blinkCooldown = false;
+      document.getElementById('d-eyes').textContent = 'open';
+      document.getElementById('d-eyes').classList.remove('active');
+    }, 1000);
+  }
+});
+
+goTo(0);
+</script>
+</body>
+</html>
